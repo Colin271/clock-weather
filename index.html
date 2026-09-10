@@ -4,6 +4,8 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#101b28"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="此刻">
 <meta name="description" content="此刻：适配手机全屏的时钟、日期、当地天气与精确定位。"><title>此刻 · 时钟与天气</title>
+<!-- 后台部署后，把 Worker 的 HTTPS 根地址填入下面的 content。不要填写查看口令。 -->
+<meta name="CITY_STATS_URL" content="">
 <link rel="manifest" href="./manifest.webmanifest">
 <style>
 :root{color-scheme:dark;--bg:#101b28;--text:#f4f7fa;--muted:#a5b5c7;--accent:#9aebd7;--line:#ffffff1c;font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
@@ -33,14 +35,15 @@ dialog{max-width:calc(100% - 28px);width:440px;max-height:calc(100vh - 32px);max
 <section class="clock" aria-label="当前时间与日期"><p class="eyebrow">此时 · 此地</p><time id="clock-time" class="digits"><span id="hm" class="hm">--:--</span><span id="seconds" class="seconds">--</span></time><p id="date" class="date">正在读取日期</p><p class="timezone" id="timezone">设备本地时间</p></section>
 <div class="dashboard">
 <section aria-labelledby="weather-heading"><h2 class="section-label" id="weather-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 18a4 4 0 0 1 0-8 6 6 0 0 1 11.7-1A4.5 4.5 0 1 1 18 18Z"/></svg>当地天气</h2><div class="weather-main"><div class="temperature" id="temperature">--°</div><div><p class="weather-name" id="weather-name">等待定位</p><p class="small" id="feels">定位后显示当地天气</p></div></div><div class="metrics"><span>湿度<b id="humidity">--</b></span><span>风速<b id="wind">--</b></span></div><p class="status" id="weather-status" role="status">天气每 15 分钟自动更新</p></section>
-<section class="location" aria-labelledby="location-heading"><div class="place-head"><h2 class="section-label" id="location-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>我的位置</h2><button class="outline" id="locate">开启定位</button></div><h3 class="loc-title" id="place">你所在的地方</h3><div class="coords" id="coords">经纬度等待获取</div><p class="status" id="location-status" role="status">允许浏览器定位，即可显示坐标与定位精度。</p><p class="privacy">点击定位后，坐标会用于查询天气和地址；本页不保存位置记录。</p></section>
+<section class="location" aria-labelledby="location-heading"><div class="place-head"><h2 class="section-label" id="location-heading"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>我的位置</h2><button class="outline" id="locate">开启定位</button></div><h3 class="loc-title" id="place">你所在的地方</h3><div class="coords" id="coords">经纬度等待获取</div><p class="status" id="location-status" role="status">允许浏览器定位，即可显示坐标与定位精度。</p><p class="status" id="address-status" role="status"></p><button class="help-button" id="retry-address" hidden>重试地址</button><p class="privacy">点击定位后，精确坐标仅用于查询天气和地址，不上传到访问统计。</p></section>
 </div>
 <footer><span>天气：<a href="https://open-meteo.com/" target="_blank" rel="noopener noreferrer">Open-Meteo</a><br>地址：© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a></span><button class="help-button" id="help">手机全屏使用说明 ↗</button></footer>
+<aside id="city-stats-notice" hidden aria-label="城市访问统计说明"><p class="small">本站通过 Cloudflare 按网络地址推测大致城市，统计访问时间与次数。统计库不保存完整 IP 或精确坐标。</p><button class="help-button" id="city-stats-toggle">关闭城市统计</button><p class="small" id="city-stats-status" role="status"></p></aside>
 </main>
 <dialog id="help-dialog" aria-labelledby="help-title"><h2 id="help-title">让此刻铺满屏幕</h2><p>Android：点击右上角「全屏显示」。浏览器支持时，可隐藏地址栏并进入全屏。</p><p>iPhone / iPad：若无法直接全屏，请用 Safari 打开此页面，点击「分享」→「添加到主屏幕」，再从主屏幕图标打开。</p><p>定位需要 HTTPS、安全的浏览器环境，以及系统和浏览器的定位权限。定位精度取决于设备、信号与授权设置。</p><button class="primary" id="close-help">知道了</button></dialog>
 <script>
 (()=>{'use strict';
-const $=id=>document.getElementById(id);let position=null,locationBusy=false,weatherVersion=0,weatherController=null,wakeLock=null;
+const $=id=>document.getElementById(id);let position=null,weatherVersion=0,weatherController=null,wakeLock=null;
 const dateFormatter=new Intl.DateTimeFormat('zh-CN',{year:'numeric',month:'long',day:'numeric',weekday:'long'});
 const timeFormatter=new Intl.DateTimeFormat('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
 function tick(){const now=new Date();$('hm').textContent=String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');$('seconds').textContent=String(now.getSeconds()).padStart(2,'0');$('clock-time').dateTime=now.toISOString();$('date').textContent=dateFormatter.format(now);$('timezone').textContent='设备本地时间 · '+(Intl.DateTimeFormat().resolvedOptions().timeZone||'本地时区');}
@@ -49,9 +52,138 @@ function status(id,text,error=false){$(id).textContent=text;$(id).classList.togg
 async function json(url,signal){const response=await fetch(url,{signal,referrerPolicy:'no-referrer'});if(!response.ok)throw new Error('HTTP '+response.status);return response.json();}
 function description(code){if(code===0)return'晴';if(code===1)return'大部晴朗';if(code===2)return'多云';if(code===3)return'阴';if([45,48].includes(code))return'雾';if([51,53,55].includes(code))return'毛毛雨';if([56,57,66,67].includes(code))return'冻雨';if([61,63,65].includes(code))return'雨';if([71,73,75,77].includes(code))return'雪';if([80,81,82].includes(code))return'阵雨';if([85,86].includes(code))return'阵雪';if([95,96,99].includes(code))return'雷雨';return'天气状况未知';}
 const value=(number,suffix='')=>typeof number==='number'&&Number.isFinite(number)?Math.round(number)+suffix:'--';
-async function weather(){if(!position)return;const version=++weatherVersion;weatherController?.abort();const controller=new AbortController();weatherController=controller;const timeout=setTimeout(()=>controller.abort(),18000);status('weather-status','正在更新当地天气…');try{const p=new URLSearchParams({latitude:position.latitude.toFixed(3),longitude:position.longitude.toFixed(3),current:'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m',timezone:'auto'});const data=await json('https://api.open-meteo.com/v1/forecast?'+p,controller.signal);if(version!==weatherVersion)return;const c=data.current;if(!c||!Number.isFinite(c.temperature_2m))throw new Error('Missing weather');$('temperature').textContent=value(c.temperature_2m,'°');$('weather-name').textContent=description(c.weather_code);$('feels').textContent='体感 '+value(c.apparent_temperature,'°C');$('humidity').textContent=value(c.relative_humidity_2m,'%');$('wind').textContent=value(c.wind_speed_10m,' km/h');status('weather-status','天气时次 '+(c.time?.replace('T',' ')||'未知')+' · '+(data.timezone||'当地时间'));}catch(error){if(version!==weatherVersion)return;$('temperature').textContent='--°';$('weather-name').textContent='天气暂不可用';$('feels').textContent='重新定位可重试天气查询';$('humidity').textContent='--';$('wind').textContent='--';status('weather-status','天气服务连接失败，请检查网络后重试。',true);}finally{clearTimeout(timeout);}}
-async function address(coords){const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),12000);try{const p=new URLSearchParams({format:'jsonv2',lat:coords.latitude.toFixed(6),lon:coords.longitude.toFixed(6),'accept-language':'zh-CN',zoom:'18'});const result=await json('https://nominatim.openstreetmap.org/reverse?'+p,controller.signal);if(position!==coords)return;if(result.display_name){$('place').textContent=result.display_name;}else{$('place').textContent='已获取坐标 · 暂无地址';}}catch{if(position===coords)$('place').textContent='已获取坐标 · 地址暂不可用';}finally{clearTimeout(timeout);}}
-function locate(){if(locationBusy)return;if(!window.isSecureContext){status('location-status','请使用 HTTPS 链接打开网页，再开启定位。',true);return;}if(!navigator.geolocation){status('location-status','此浏览器不支持定位，请换用系统浏览器。',true);return;}locationBusy=true;$('locate').disabled=true;$('locate').textContent='定位中…';status('location-status','正在获取高精度位置，请允许浏览器访问定位…');navigator.geolocation.getCurrentPosition(result=>{locationBusy=false;$('locate').disabled=false;$('locate').textContent='重新定位';position=result.coords;$('place').textContent='已定位 · 正在查找地址';$('coords').textContent='纬度 '+position.latitude.toFixed(6)+'° · 经度 '+position.longitude.toFixed(6)+'°';status('location-status','精度约 ±'+Math.round(position.accuracy)+' 米 · '+timeFormatter.format(new Date(result.timestamp))+' 定位');void weather();void address(position);},error=>{locationBusy=false;$('locate').disabled=false;$('locate').textContent='重试定位';const messages={1:'定位权限未开启。请在浏览器的网站设置中允许定位，并开启系统定位。',2:'暂时无法获取位置，请检查系统定位服务或移动到信号较好的地方。',3:'定位超时，请在信号较好的地方重试。'};status('location-status',(messages[error.code]||'定位失败，请重试。')+(position?' 以上仍为上次的位置。':''),true);},{enableHighAccuracy:true,timeout:25000,maximumAge:0});}
+async function weather(){if(!position||locationSession)return;const version=++weatherVersion;weatherController?.abort();const controller=new AbortController();weatherController=controller;const timeout=setTimeout(()=>controller.abort(),18000);status('weather-status','正在更新当地天气…');try{const p=new URLSearchParams({latitude:position.latitude.toFixed(3),longitude:position.longitude.toFixed(3),current:'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m',timezone:'auto'});const data=await json('https://api.open-meteo.com/v1/forecast?'+p,controller.signal);if(version!==weatherVersion)return;const c=data.current;if(!c||!Number.isFinite(c.temperature_2m))throw new Error('Missing weather');$('temperature').textContent=value(c.temperature_2m,'°');$('weather-name').textContent=description(c.weather_code);$('feels').textContent='体感 '+value(c.apparent_temperature,'°C');$('humidity').textContent=value(c.relative_humidity_2m,'%');$('wind').textContent=value(c.wind_speed_10m,' km/h');status('weather-status','天气时次 '+(c.time?.replace('T',' ')||'未知')+' · '+(data.timezone||'当地时间'));}catch(error){if(version!==weatherVersion)return;$('temperature').textContent='--°';$('weather-name').textContent='天气暂不可用';$('feels').textContent='重新定位可重试天气查询';$('humidity').textContent='--';$('wind').textContent='--';status('weather-status','天气服务连接失败，请检查网络后重试。',true);}finally{clearTimeout(timeout);}}
+// Collect a bounded set of fixes; only use the best reported accuracy in this run.
+let locationSession=null,addressRequest=null,addressGeneration=0,addressCooldown=0,addressButtonTimer=null,pendingLocationLookup=false;
+const addressCache=new Map();
+function updateAddressButton(){
+  clearTimeout(addressButtonTimer);
+  const button=$('retry-address');
+  button.hidden=!position;
+  const seconds=Math.max(0,Math.ceil((addressCooldown-Date.now())/1000));
+  button.disabled=!!locationSession||!!addressRequest||seconds>0;
+  button.textContent=addressRequest?'查询地址中…':seconds>0?'重试地址（'+seconds+'秒）':'重试地址';
+  if(seconds>0)addressButtonTimer=setTimeout(updateAddressButton,1000);
+}
+function cancelAddress(){addressGeneration++;if(addressRequest)addressRequest.abort();addressRequest=null;updateAddressButton();}
+async function address(coords,force=false){
+  if(!coords||locationSession||Date.now()<addressCooldown||addressRequest)return;
+  const key=coords.latitude.toFixed(6)+','+coords.longitude.toFixed(6);
+  const cached=addressCache.get(key);
+  if(!force&&cached&&Date.now()-cached.at<300000){$('place').textContent=cached.text;status('address-status','文字地址已显示；坐标精度见上方。');updateAddressButton();return;}
+  const generation=++addressGeneration;
+  const controller=new AbortController();addressRequest=controller;
+  let timedOut=false;
+  const timeout=setTimeout(()=>{timedOut=true;controller.abort();},15000);
+  // One explicit query per action, with a cooldown. No automatic retry loop.
+  addressCooldown=Date.now()+5000;
+  status('address-status','正在把坐标查询为文字地址…');updateAddressButton();
+  try{
+    const p=new URLSearchParams({format:'jsonv2',lat:coords.latitude.toFixed(6),lon:coords.longitude.toFixed(6),'accept-language':'zh-CN',zoom:'18'});
+    const response=await fetch('https://nominatim.openstreetmap.org/reverse?'+p,{signal:controller.signal,referrerPolicy:'no-referrer'});
+    if(generation!==addressGeneration||position!==coords)return;
+    if(response.status===429){
+      const after=response.headers.get('Retry-After');
+      let delay=Number(after)*1000;
+      if(!Number.isFinite(delay))delay=Date.parse(after)-Date.now();
+      addressCooldown=Date.now()+Math.max(60000,Number.isFinite(delay)?delay:0);
+      throw new Error('limited');
+    }
+    if(response.status===404){$('place').textContent='已定位 · 附近暂无文字地址';status('address-status','地图暂未覆盖此处，仍可使用上方经纬度。');return;}
+    if(!response.ok)throw new Error('network');
+    const result=await response.json();
+    if(generation!==addressGeneration||position!==coords)return;
+    if(typeof result.display_name==='string'&&result.display_name.trim()){
+      $('place').textContent=result.display_name;
+      addressCache.set(key,{at:Date.now(),text:result.display_name});
+      if(addressCache.size>5)addressCache.delete(addressCache.keys().next().value);
+      status('address-status','地址查询成功；文字地址可能对应附近的地图地点。');
+    }else{
+      $('place').textContent='已定位 · 附近暂无文字地址';
+      status('address-status','地图暂未提供此处的文字地址，仍可使用上方经纬度。');
+    }
+  }catch(error){
+    if(generation!==addressGeneration||position!==coords)return;
+    const cachedAddress=addressCache.get(key);
+    if(cachedAddress)$('place').textContent=cachedAddress.text;
+    else $('place').textContent='已定位 · 地址查询暂未成功';
+    const message=error.message==='limited'?'地址查询较频繁，请等待倒计时结束后重试。':timedOut?'地址服务响应超时，检查网络后可单独重试。':'地址服务暂时无法连接，检查网络后可单独重试。';
+    status('address-status',message+(cachedAddress?' 已保留上次查询到的地址。':' 经纬度仍可使用。'),true);
+  }finally{
+    clearTimeout(timeout);
+    if(generation===addressGeneration){addressRequest=null;updateAddressButton();}
+  }
+}
+function validFix(result){
+  const c=result?.coords;
+  return c&&Number.isFinite(c.latitude)&&Math.abs(c.latitude)<=90&&Number.isFinite(c.longitude)&&Math.abs(c.longitude)<=180&&Number.isFinite(c.accuracy)&&c.accuracy>=0&&Number.isFinite(result.timestamp)&&Math.abs(Date.now()-result.timestamp)<=15000;
+}
+function showFix(fix){
+  $('coords').textContent='纬度 '+fix.coords.latitude.toFixed(6)+'° · 经度 '+fix.coords.longitude.toFixed(6)+'°';
+}
+function fixLabel(fix){return '精度约 ±'+Math.ceil(fix.coords.accuracy)+' 米 · '+timeFormatter.format(new Date(fix.timestamp))+' 定位';}
+function finishLocation(reason='done'){
+  const session=locationSession;if(!session)return;
+  locationSession=null;
+  clearTimeout(session.deadline);clearTimeout(session.targetTimer);
+  if(session.watchId!==null)navigator.geolocation.clearWatch(session.watchId);
+  $('locate').disabled=false;$('locate').textContent=position||session.best?'重新定位':'重试定位';
+  if(session.best){
+    position=session.best.coords;showFix(session.best);
+    const suffix=reason==='permission'?' · 权限已关闭，保留已获取坐标':reason==='paused'?' · 已暂停定位':position.accuracy>100?' · 精度较低，建议到窗边或室外重试':' · 已保留本次较优结果';
+    status('location-status',fixLabel(session.best)+suffix);
+    pendingLocationLookup=true;
+    if(!document.hidden){pendingLocationLookup=false;void weather();if(Date.now()<addressCooldown)status('address-status','坐标已更新，倒计时结束后可点击“重试地址”。');else void address(position);}
+    else status('address-status','已保留坐标，回到页面后查询地址。');
+  }else{
+    const text=reason==='permission'?'定位权限未开启，请在系统和浏览器设置中允许“精确位置”。':reason==='manual'?'已停止本次定位。':reason==='paused'?'页面已切到后台，本次定位已停止。':'未能获取新位置，请检查系统定位或到信号较好的地方重试。';
+    status('location-status',text+(position?' 仍显示上次的位置。':''),!['manual','paused'].includes(reason));
+    if(position)status('address-status','需要时可重新查询上次坐标对应的地址。');
+  }
+  updateAddressButton();
+}
+function locate(){
+  if(locationSession){finishLocation('manual');return;}
+  if(!window.isSecureContext){status('location-status','请使用 HTTPS 链接打开网页，再开启定位。',true);return;}
+  if(!navigator.geolocation){status('location-status','此浏览器不支持定位，请换用系统浏览器。',true);return;}
+  cancelAddress();pendingLocationLookup=false;
+  const session={best:null,watchId:null,deadline:null,targetTimer:null,started:Date.now()};locationSession=session;
+  $('locate').textContent='停止定位';$('locate').disabled=false;
+  status('location-status','正在获取较准确的位置，最多 25 秒。请允许定位，并尽量保持静止。'+(position?' 当前仍显示上次的位置。':''));
+  updateAddressButton();
+  session.deadline=setTimeout(()=>{if(locationSession===session)finishLocation('timeout');},25000);
+  try{
+    session.watchId=navigator.geolocation.watchPosition(result=>{
+      if(locationSession!==session||!validFix(result))return;
+      const c=result.coords;
+      if(!session.best||c.accuracy<=session.best.coords.accuracy){
+        const first=!session.best;
+        session.best={coords:{latitude:c.latitude,longitude:c.longitude,accuracy:c.accuracy},timestamp:result.timestamp};
+        showFix(session.best);
+        $('place').textContent='已获取坐标 · 正在优化定位';
+        status('location-status',fixLabel(session.best)+' · 正在继续优化，可点击“停止定位”使用当前结果。');
+        status('address-status','定位结束后查询文字地址。');
+        if(first){weatherVersion++;weatherController?.abort();$('temperature').textContent='--°';$('weather-name').textContent='等待定位完成';$('feels').textContent='将按本次位置更新天气';$('humidity').textContent='--';$('wind').textContent='--';status('weather-status','正在优化定位…');}
+      }
+      if(session.best.coords.accuracy<=20&&session.targetTimer===null){session.targetTimer=setTimeout(()=>{if(locationSession===session)finishLocation();},Math.max(0,3000-(Date.now()-session.started)));}
+    },error=>{
+      if(locationSession!==session)return;
+      if(error.code===1){finishLocation('permission');return;}
+      if(session.best)status('location-status',fixLabel(session.best)+' · 信号暂时不稳定，已保留本次较优结果。');
+      else status('location-status','暂未收到定位信号，正在继续尝试；最多等待 25 秒。');
+    },{enableHighAccuracy:true,timeout:12000,maximumAge:0});
+    // Browser callbacks are asynchronous; also cover hosts that complete synchronously.
+    if(locationSession!==session&&session.watchId!==null)navigator.geolocation.clearWatch(session.watchId);
+  }catch{if(locationSession===session)finishLocation('permission');}
+}
+$('retry-address').addEventListener('click',()=>{if(position&&!locationSession)void address(position,true);});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){if(locationSession)finishLocation('paused');}
+  else if(pendingLocationLookup&&position){pendingLocationLookup=false;void weather();if(Date.now()<addressCooldown)status('address-status','倒计时结束后可点击“重试地址”。');else void address(position);}
+});
+window.addEventListener('pagehide',()=>{if(locationSession)finishLocation('paused');cancelAddress();clearTimeout(addressButtonTimer);});
+window.addEventListener('pageshow',updateAddressButton);
+
 $('locate').addEventListener('click',locate);setInterval(()=>{if(!document.hidden)void weather();},15*60*1000);
 function showHelp(){if(!$('help-dialog').open)$('help-dialog').showModal();}
 $('help').addEventListener('click',showHelp);$('close-help').addEventListener('click',()=>$('help-dialog').close());
@@ -61,6 +193,27 @@ $('fullscreen').addEventListener('click',async()=>{try{if(document.fullscreenEle
 document.addEventListener('fullscreenchange',()=>{$('fullscreen-label').textContent=document.fullscreenElement?'退出全屏':'全屏显示';if(!document.fullscreenElement&&wakeLock){void wakeLock.release();wakeLock=null;}});
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){tick();if(document.fullscreenElement||standalone())void keepAwake();}});
 if(standalone()){$('fullscreen-label').textContent='全屏说明';void keepAwake();}
+})();
+</script>
+<script id="city-stats-script">
+(()=>{'use strict';
+const raw=document.querySelector('meta[name="CITY_STATS_URL"]')?.content.trim();
+if(!raw)return;
+let endpoint;try{const url=new URL(raw);if(url.protocol!=='https:'||url.username||url.password)return;endpoint=url.origin+'/visit';}catch{return;}
+const notice=document.getElementById('city-stats-notice'),toggle=document.getElementById('city-stats-toggle'),status=document.getElementById('city-stats-status');
+const key='moment-city-stats-disabled';
+let disabled=false,sent=false,controller=null;
+try{disabled=localStorage.getItem(key)==='1';}catch{}
+const privacySignal=navigator.globalPrivacyControl===true||navigator.doNotTrack==='1';
+notice.hidden=false;
+function display(message){toggle.textContent=disabled?'开启城市统计':'关闭城市统计';toggle.disabled=privacySignal;status.textContent=message||(privacySignal?'已遵循浏览器的隐私偏好，城市统计已关闭。':disabled?'此浏览器已关闭城市统计。':'城市统计已开启；每次打开网页最多记录一次。');}
+function eventId(){if(crypto.randomUUID)return crypto.randomUUID();const b=crypto.getRandomValues(new Uint8Array(16));b[6]=(b[6]&15)|64;b[8]=(b[8]&63)|128;return Array.from(b,(x,i)=>([4,6,8,10].includes(i)?'-':'')+x.toString(16).padStart(2,'0')).join('');}
+async function record(){if(disabled||privacySignal||sent||document.hidden||controller)return;
+controller=new AbortController();const current=controller;const timeout=setTimeout(()=>current.abort(),10000);
+try{const response=await fetch(endpoint,{method:'POST',headers:{'X-Visit-Id':eventId()},credentials:'omit',referrerPolicy:'no-referrer',signal:current.signal});if(!response.ok)throw Error('Unavailable');sent=true;if(!disabled)display();}catch{if(!disabled)display('城市统计暂不可用，不影响时钟、天气和定位。');}finally{clearTimeout(timeout);if(controller===current)controller=null;}}
+toggle.addEventListener('click',()=>{disabled=!disabled;try{localStorage.setItem(key,disabled?'1':'0');}catch{}if(disabled)controller?.abort();display();if(!disabled)void record();});
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)void record();});
+display();setTimeout(()=>void record(),1500);
 })();
 </script>
 </body></html>
